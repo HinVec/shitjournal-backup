@@ -250,27 +250,113 @@ def save_article(data: dict, subdir: str, organize_by_id: bool = True) -> Path |
     return md_path, subpath, safe_slug
 
 
-def _screenshot_article(page, subpath: Path, safe_slug: str) -> None:
-    """对正文区域截图并保存为 PNG（站点部分内容为图片形式，便于归档留档）。成功后将截图链接写入同目录 .md。"""
-    png_path = subpath / f"{safe_slug}.png"
+def _download_body_images(page, subpath: Path, safe_slug: str) -> None:
+    """正文在站点上以图片形式加载时，从页面中下载这些图片并保存到同目录，并写入 .md 引用。"""
+    md_path = subpath / f"{safe_slug}.md"
     try:
-        main = page.locator("main").first
-        if main.count() > 0:
-            main.screenshot(path=str(png_path), timeout=15000)
-        else:
-            page.screenshot(path=str(png_path), full_page=True, timeout=30000)
-    except Exception:
-        try:
-            page.screenshot(path=str(png_path), full_page=True, timeout=30000)
-        except Exception:
-            return
-    if png_path.exists():
-        md_path = subpath / f"{safe_slug}.md"
-        if md_path.exists():
-            md_path.write_text(
-                md_path.read_text(encoding="utf-8") + f"\n\n![正文截图]({safe_slug}.png)\n",
-                encoding="utf-8",
+        # 从 main 内收集 img 的 src（排除明显为图标的小图）
+        img_data = page.evaluate(
+            """() => {
+              const main = document.querySelector('main');
+              if (!main) return [];
+              const imgs = main.querySelectorAll('img[src]');
+              const out = [];
+              for (const img of imgs) {
+                const w = img.naturalWidth || img.width || 0;
+                const h = img.naturalHeight || img.height || 0;
+                if (w >= 80 && h >= 80) out.push(img.src);
+              }
+              return out;
+            }"""
+        )
+        if not img_data:
+            # 尝试 article 或整页内较大的 img
+            img_data = page.evaluate(
+                """() => {
+                  const imgs = document.querySelectorAll('img[src]');
+                  const out = [];
+                  for (const img of imgs) {
+                    const w = img.naturalWidth || img.width || 0;
+                    const h = img.naturalHeight || img.height || 0;
+                    if (w >= 100 && h >= 100) out.push(img.src);
+                  }
+                  return [...new Set(out)];
+                }"""
             )
+    except Exception:
+        img_data = []
+
+    written = []
+    for i, src in enumerate(img_data):
+        if not src or src.startswith("data:"):
+            continue
+        try:
+            # 同源或绝对 URL 用 page.request；跨域可能需 requests
+            resp = page.request.get(src, timeout=30000)
+            if resp.status != 200:
+                continue
+            ct = (resp.headers.get("content-type") or "").lower()
+            ext = ".png"
+            if "jpeg" in ct or "jpg" in ct:
+                ext = ".jpg"
+            elif "webp" in ct:
+                ext = ".webp"
+            elif "gif" in ct:
+                ext = ".gif"
+            name = f"{safe_slug}{'-' + str(i + 1) if i else ''}{ext}"
+            out_path = subpath / name
+            out_path.write_bytes(resp.body())
+            written.append(name)
+        except Exception:
+            continue
+
+    # 若 main 内无足够大的 img，尝试背景图（正文有时是 div + background-image）
+    if not written:
+        try:
+            bg_urls = page.evaluate(
+                """() => {
+                  const main = document.querySelector('main');
+                  if (!main) return [];
+                  const out = [];
+                  const divs = main.querySelectorAll('div');
+                  for (const el of divs) {
+                    const bg = window.getComputedStyle(el).backgroundImage;
+                    const m = bg.match(/url\\(["']?([^"')]+)["']?\\)/);
+                    if (m && m[1] && !m[1].startsWith('data:')) out.push(m[1]);
+                  }
+                  return [...new Set(out)];
+                }"""
+            )
+            for i, src in enumerate(bg_urls):
+                if not src:
+                    continue
+                try:
+                    resp = page.request.get(src, timeout=30000)
+                    if resp.status != 200:
+                        continue
+                    ext = ".png"
+                    ct = (resp.headers.get("content-type") or "").lower()
+                    if "jpeg" in ct or "jpg" in ct:
+                        ext = ".jpg"
+                    elif "webp" in ct:
+                        ext = ".webp"
+                    name = f"{safe_slug}-bg{i + 1}{ext}"
+                    out_path = subpath / name
+                    out_path.write_bytes(resp.body())
+                    written.append(name)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    if written and md_path.exists():
+        md_path.write_text(
+            md_path.read_text(encoding="utf-8")
+            + "\n\n"
+            + "\n".join(f"![正文]({n})" for n in written)
+            + "\n",
+            encoding="utf-8",
+        )
 
 
 def _load_existing_index(out_dir: Path) -> tuple[set[str], set[str], dict]:
@@ -394,7 +480,7 @@ def run_sync(
             result = save_article(data, "news")
             if result:
                 _md, subpath, safe_slug = result
-                _screenshot_article(page, subpath, safe_slug)
+                _download_body_images(page, subpath, safe_slug)
             new_news.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
 
         if new_news and push_every > 0:
@@ -421,7 +507,7 @@ def run_sync(
                 result = save_article(data, "preprints")
                 if result:
                     _md, subpath, safe_slug = result
-                    _screenshot_article(page, subpath, safe_slug)
+                    _download_body_images(page, subpath, safe_slug)
                 new_preprints.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
                 if push_every > 0 and (i + 1) % push_every == 0:
                     _maybe_push()
