@@ -1,11 +1,12 @@
-# 每日从 shitjournal.org 抓取文章并备份到本仓库
-name: Daily ShitJournal Backup
+# 定期同步 S.H.I.T Journal 内容并归档到本仓库
+name: ShitJournal Archive Sync
 
 on:
+  push:
+    branches: [main]
   schedule:
-    # 每天 UTC 00:00（北京时间 08:00）
     - cron: "0 0 * * *"
-  workflow_dispatch: # 支持在 Actions 页手动运行
+  workflow_dispatch:
 
 jobs:
   backup:
@@ -21,18 +22,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: pip install -r requirements.txt
 
       - name: Install Playwright browsers
         run: playwright install chromium
 
-      - name: Run crawler
-        run: python crawler.py crawl --news-only
+      - name: Sync and archive
+        run: python crawler.py crawl --preprints-limit 100
 
-      - name: Commit and push backup
+      - name: Commit and push archive
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add backup/
-          git diff --staged --quiet || (git commit -m "chore(backup): daily shitjournal backup [automated]" && git push)
+          git diff --staged --quiet || (git commit -m "chore(archive): sync shitjournal [automated]" && git push)
