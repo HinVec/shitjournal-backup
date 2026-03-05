@@ -65,7 +65,7 @@ flowchart LR
   - 路径：`backup/preprints/{UUID 前 2 位}/{uuid}.md`、`backup/preprints/{UUID 前 2 位}/{uuid}.meta.json`
   - 示例：`backup/preprints/1f/1fd278a6-7895-4c19-9d4e-5fdbb76904a7.md`
 
-**索引**：`backup/index.json`，记录当次同步的 URL、slug、标题、时间戳；可含新闻与预印本条目的统计信息。
+**索引**：`backup/index.json`，记录已收录的新闻与预印本 URL、slug、标题及最近一次同步时间戳；随每次同步合并更新，用于增量同步时跳过已收录条目。
 
 **元数据要求**：
 
@@ -82,12 +82,16 @@ flowchart LR
 2. **推送触发**：向 `main` 分支 push 时执行一次。
 3. **手动**：在 GitHub Actions 中选择 “ShitJournal Archive Sync” → “Run workflow” 可立即执行。
 
+**禁止并行**：同一时间只允许一次同步任务执行；使用 `concurrency` 组（如 `shitjournal-archive`）且不取消进行中的运行（`cancel-in-progress: false`），新触发的运行排队等待。
+
+**增量同步**：已收录的 URL 由 `backup/index.json` 记录；每次同步前加载该索引，仅对尚未收录的新闻与预印本 URL 发起请求并写入，避免重复抓取。同步结束后将本次新增条目与原有索引合并写回 `index.json`。
+
 **执行结果**：
 
 - 仅当 `backup/` 有变更时执行提交并 push。
 - 提交信息使用统一格式：`chore(archive): sync shitjournal [automated]`。
 
-**可配置项**：预印本单次同步可设上限（如 100 篇）以控制单次运行时间；当前 workflow 中为 `--preprints-limit 100`，可按需调整或取消限制。
+**可配置项**：预印本单次同步可设上限（如 100 篇）以控制单次运行时间；该上限作用于「本次待同步」的预印本数量。当前 workflow 中为 `--preprints-limit 100`，可按需调整或取消限制。
 
 ---
 

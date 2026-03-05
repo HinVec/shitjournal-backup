@@ -237,6 +237,26 @@ def save_article(data: dict, subdir: str, organize_by_id: bool = True) -> Path |
     return md_path
 
 
+def _load_existing_index(out_dir: Path) -> tuple[set[str], set[str], dict]:
+    """加载已有 index.json，返回 (已收录新闻 url 集合, 已收录预印本 url 集合, 原 index 字典)。"""
+    index_path = out_dir / "index.json"
+    existing_news_urls: set[str] = set()
+    existing_preprint_urls: set[str] = set()
+    previous_index: dict = {"news": [], "preprints": []}
+    if index_path.exists():
+        try:
+            previous_index = json.loads(index_path.read_text(encoding="utf-8"))
+            for item in previous_index.get("news", []):
+                if item.get("url"):
+                    existing_news_urls.add(item["url"])
+            for item in previous_index.get("preprints", []):
+                if item.get("url"):
+                    existing_preprint_urls.add(item["url"])
+        except (json.JSONDecodeError, OSError):
+            pass
+    return existing_news_urls, existing_preprint_urls, previous_index
+
+
 def run_crawl(
     output_dir: Path | None = None,
     news_only: bool = False,
@@ -244,16 +264,16 @@ def run_crawl(
     headless: bool = True,
     preprints_limit: int = 0,
 ) -> None:
-    """执行抓取：用 Playwright 打开新闻列表与各文章页，解析并保存。"""
+    """执行抓取：仅抓取尚未收录的 URL，并与已有索引合并后写回。"""
     global OUTPUT_DIR
     OUTPUT_DIR = Path(output_dir or OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    index = {
-        "news": [],
-        "preprints": [],
-        "crawled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    }
+    existing_news, existing_preprints, previous_index = _load_existing_index(OUTPUT_DIR)
+    typer.echo(f"已收录：新闻 {len(existing_news)} 篇，预印本 {len(existing_preprints)} 篇。")
+
+    new_news: list[dict] = []
+    new_preprints: list[dict] = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -264,13 +284,14 @@ def run_crawl(
         page = context.new_page()
         page.set_default_timeout(20000)
 
-        # 1) 新闻列表
+        # 1) 新闻：仅抓取未收录的
         page.goto(f"{BASE_URL}/news", wait_until="networkidle")
         time.sleep(0.5)
         news_urls = extract_news_links_from_page(page)
-        typer.echo(f"发现 {len(news_urls)} 篇新闻。")
+        news_to_fetch = [u for u in news_urls if u not in existing_news]
+        typer.echo(f"新闻：共 {len(news_urls)} 篇，待同步 {len(news_to_fetch)} 篇。")
 
-        for url in tqdm(news_urls, desc="新闻"):
+        for url in tqdm(news_to_fetch, desc="新闻"):
             time.sleep(delay)
             page.goto(url, wait_until="networkidle")
             time.sleep(0.3)
@@ -280,17 +301,17 @@ def run_crawl(
             data["url"] = url
             data["slug"] = url.rstrip("/").split("/")[-1] or "index"
             save_article(data, "news")
-            index["news"].append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
+            new_news.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
 
-        # 2) 预印本：从四个 zone 收集所有详情页链接（去重），再逐篇抓取
+        # 2) 预印本：仅抓取未收录的，再应用 limit
         if not news_only:
             preprint_urls = _collect_all_preprint_urls(page, delay)
+            to_fetch = [u for u in preprint_urls if u not in existing_preprints]
             if preprints_limit > 0:
-                preprint_urls = preprint_urls[: preprints_limit]
-                typer.echo(f"预印本限制为 {preprints_limit} 篇，共 {len(preprint_urls)} 篇待抓取。")
-            else:
-                typer.echo(f"发现 {len(preprint_urls)} 篇预印本文章。")
-            for url in tqdm(preprint_urls, desc="预印本"):
+                to_fetch = to_fetch[:preprints_limit]
+            typer.echo(f"预印本：共 {len(preprint_urls)} 篇，已收录 {len(existing_preprints)} 篇，本次待同步 {len(to_fetch)} 篇。")
+
+            for url in tqdm(to_fetch, desc="预印本"):
                 time.sleep(delay)
                 page.goto(url, wait_until="networkidle")
                 time.sleep(0.3)
@@ -300,14 +321,20 @@ def run_crawl(
                 data["url"] = url
                 data["slug"] = url.rstrip("/").split("/")[-1] or "index"
                 save_article(data, "preprints")
-                index["preprints"].append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
+                new_preprints.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
 
         context.close()
         browser.close()
 
+    # 合并索引：已有 + 本次新增
+    index = {
+        "news": previous_index.get("news", []) + new_news,
+        "preprints": previous_index.get("preprints", []) + new_preprints,
+        "crawled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
     index_path = OUTPUT_DIR / "index.json"
     index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
-    typer.echo(f"索引已写入: {index_path}")
+    typer.echo(f"索引已写入: {index_path}（共新闻 {len(index['news'])} 篇，预印本 {len(index['preprints'])} 篇）")
 
 
 app = typer.Typer(help="S.H.I.T Journal 备份爬虫")
