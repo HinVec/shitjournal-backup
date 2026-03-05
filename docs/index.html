@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>S.H.I.T Journal 归档</title>
   <link rel="stylesheet" href="assets/style.css">
@@ -112,10 +113,15 @@
     }
 
     function base64ToUtf8(base64) {
-      var binary = atob(base64.replace(/\n/g, ''));
+      var b64 = (base64 || '').replace(/\s/g, '');
+      var binary = atob(b64);
       var bytes = new Uint8Array(binary.length);
       for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      return new TextDecoder('utf-8').decode(bytes);
+      try {
+        return new TextDecoder('utf-8').decode(bytes);
+      } catch (e) {
+        return decodeURIComponent(escape(binary));
+      }
     }
     fetch('https://api.github.com/repos/' + REPO + '/contents/backup/index.json?ref=' + BRANCH)
       .then(function (r) { return r.json(); })
