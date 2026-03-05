@@ -64,3 +64,5 @@ python crawler.py crawl
 ## 许可与免责
 
 本归档仅供学术与个人备份之用。内容版权归 S.H.I.T Journal 及原作者所有；若来源站要求停止同步，将立即停止并配合处理。
+
+完整需求与规格见 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)。
