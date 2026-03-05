@@ -1,0 +1,21 @@
+{
+  "news": [
+    {
+      "url": "https://shitjournal.org/news/maintenance",
+      "slug": "maintenance",
+      "title": "投稿通道暂时关闭，评论功能维护中"
+    },
+    {
+      "url": "https://shitjournal.org/news/zone-system",
+      "slug": "zone-system",
+      "title": "构石四域上线：旱厕 → 化粪池 → 构石 → 沉淀区"
+    },
+    {
+      "url": "https://shitjournal.org/news/governance-1.0",
+      "slug": "governance-1.0",
+      "title": "S.H.I.T 治理公约 1.0：学术去中心化方案征稿"
+    }
+  ],
+  "preprints": [],
+  "crawled_at": "2026-03-05T14:31:23Z"
+}
