@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import time
 from pathlib import Path
 from urllib.parse import urljoin
@@ -267,23 +268,78 @@ def _load_existing_index(out_dir: Path) -> tuple[set[str], set[str], dict]:
     return existing_news_urls, existing_preprint_urls, previous_index
 
 
+def _push_backup(repo_root: Path, index: dict) -> bool:
+    """将当前 backup/ 与 index 提交并 push，便于被取消后下次 run 复用。返回是否 push 成功。"""
+    index_path = OUTPUT_DIR / "index.json"
+    index_path.write_text(json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        subprocess.run(
+            ["git", "config", "user.name", "github-actions[bot]"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(["git", "add", "backup/"], cwd=repo_root, check=True, capture_output=True)
+        r = subprocess.run(
+            ["git", "diff", "--staged", "--quiet"],
+            cwd=repo_root,
+            capture_output=True,
+        )
+        if r.returncode != 0:
+            subprocess.run(
+                ["git", "commit", "-m", "chore(archive): sync shitjournal [automated]"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "pull", "--rebase", "origin", "main"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(["git", "push", "origin", "main"], cwd=repo_root, check=True, capture_output=True)
+        return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
 def run_crawl(
     output_dir: Path | None = None,
     news_only: bool = False,
     delay: float = DELAY_SECONDS,
     headless: bool = True,
     preprints_limit: int = 0,
+    push_every: int = 0,
 ) -> None:
-    """执行抓取：仅抓取尚未收录的 URL，并与已有索引合并后写回。"""
+    """执行抓取：仅抓取尚未收录的 URL，并与已有索引合并后写回。push_every>0 时每隔 N 篇预印本提交并 push，便于被取消后下次复用。"""
     global OUTPUT_DIR
     OUTPUT_DIR = Path(output_dir or OUTPUT_DIR)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    repo_root = OUTPUT_DIR.parent
 
     existing_news, existing_preprints, previous_index = _load_existing_index(OUTPUT_DIR)
     typer.echo(f"已收录：新闻 {len(existing_news)} 篇，预印本 {len(existing_preprints)} 篇。")
 
     new_news: list[dict] = []
     new_preprints: list[dict] = []
+
+    def _maybe_push() -> None:
+        if push_every <= 0:
+            return
+        merged = {
+            "news": previous_index.get("news", []) + new_news,
+            "preprints": previous_index.get("preprints", []) + new_preprints,
+            "crawled_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        if _push_backup(repo_root, merged):
+            typer.echo("已增量推送至远程。")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
@@ -313,6 +369,9 @@ def run_crawl(
             save_article(data, "news")
             new_news.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
 
+        if new_news and push_every > 0:
+            _maybe_push()
+
         # 2) 预印本：仅抓取未收录的，再应用 limit
         if not news_only:
             stop_after = (preprints_limit * 2) if preprints_limit > 0 else 0
@@ -322,7 +381,7 @@ def run_crawl(
                 to_fetch = to_fetch[:preprints_limit]
             typer.echo(f"预印本：共 {len(preprint_urls)} 篇，已收录 {len(existing_preprints)} 篇，本次待同步 {len(to_fetch)} 篇。")
 
-            for url in tqdm(to_fetch, desc="预印本"):
+            for i, url in enumerate(tqdm(to_fetch, desc="预印本")):
                 time.sleep(delay)
                 page.goto(url, wait_until="networkidle")
                 time.sleep(0.3)
@@ -333,6 +392,11 @@ def run_crawl(
                 data["slug"] = url.rstrip("/").split("/")[-1] or "index"
                 save_article(data, "preprints")
                 new_preprints.append({"url": url, "slug": data.get("slug"), "title": data.get("title")})
+                if push_every > 0 and (i + 1) % push_every == 0:
+                    _maybe_push()
+
+        if new_preprints and push_every > 0:
+            _maybe_push()
 
         context.close()
         browser.close()
@@ -356,6 +420,7 @@ def crawl_cmd(
     output_dir: Path = typer.Option(OUTPUT_DIR, "--output", "-o", help="备份输出目录"),
     news_only: bool = typer.Option(False, "--news-only", help="仅抓取新闻"),
     preprints_limit: int = typer.Option(0, "--preprints-limit", help="预印本最多抓取篇数，0 表示不限制"),
+    push_every: int = typer.Option(0, "--push-every", help="每隔 N 篇预印本提交并 push，0 不增量推送（CI 建议 25）"),
     delay: float = typer.Option(DELAY_SECONDS, "--delay", help="请求间隔秒数"),
     headless: bool = typer.Option(True, "--headless/--no-headless", help="是否无头模式"),
 ) -> None:
@@ -366,6 +431,7 @@ def crawl_cmd(
         delay=delay,
         headless=headless,
         preprints_limit=preprints_limit,
+        push_every=push_every,
     )
 
 
