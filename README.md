@@ -17,6 +17,17 @@
 
 仅收录上述两类内容的正文与元数据；首页、子刊导航等不在收录范围内。
 
+## 浏览归档（GitHub Pages）
+
+仓库内已包含静态站点（`docs/index.html` + `docs/assets/style.css`），用于在 GitHub Pages 上展示归档目录。**首次使用需在仓库设置中开启 Pages**：
+
+1. 打开 **Settings → Pages**
+2. **Source** 选择 **Deploy from a branch**
+3. **Branch** 选 `main`，**Folder** 选 **/docs**
+4. 保存后等待部署，站点地址为：**https://xx025.github.io/shitjournal-backup/**
+
+页面会从 `backup/index.json` 读取索引并列出新闻与预印本，点击条目可跳转到仓库内对应 Markdown 文件。
+
 ## 归档结构
 
 条目按 **id 分目录** 存放：

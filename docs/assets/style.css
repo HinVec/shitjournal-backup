@@ -1,0 +1,146 @@
+/* S.H.I.T Journal 归档 — GitHub Pages */
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Source+Sans+3:ital,wght@0;400;500;600;0,700&display=swap');
+
+:root {
+  --bg: #f8f6f3;
+  --bg-card: #fff;
+  --text: #1a1816;
+  --text-muted: #5c5752;
+  --accent: #8b6919;
+  --accent-soft: #e8dfc9;
+  --border: #e5e0d8;
+  --radius: 8px;
+  --font-serif: 'DM Serif Display', Georgia, serif;
+  --font-sans: 'Source Sans 3', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.wrap {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+header {
+  margin-bottom: 2.5rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+h1 {
+  font-family: var(--font-serif);
+  font-size: 1.75rem;
+  font-weight: 400;
+  margin: 0 0 0.35em;
+  letter-spacing: 0.02em;
+}
+
+header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 400;
+  margin: 0 0 0.75rem;
+  color: var(--text);
+}
+
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.list li {
+  margin-bottom: 0.5rem;
+}
+
+.list a {
+  display: block;
+  padding: 0.6rem 0.85rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.list a:hover {
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.list .title {
+  font-weight: 500;
+}
+
+.list .meta {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 0.2rem;
+}
+
+.loading {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: #a63d3d;
+  font-size: 0.9rem;
+}
+
+footer {
+  margin-top: 2.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+footer a {
+  color: var(--text-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141210;
+    --bg-card: #1e1b18;
+    --text: #e8e4df;
+    --text-muted: #9a948a;
+    --accent: #c9a82c;
+    --accent-soft: #2d291f;
+    --border: #2d2a26;
+  }
+}

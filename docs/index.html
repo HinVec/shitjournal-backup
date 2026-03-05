@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S.H.I.T Journal 归档</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>S.H.I.T Journal 归档</h1>
+      <p>对 S.H.I.T Journal 的新闻与预印本进行长期归档，便于引用与离线访问。</p>
+    </header>
+
+    <section class="section" id="news-section">
+      <h2 class="section-title">新闻</h2>
+      <ul class="list" id="news-list">
+        <li class="loading">加载中…</li>
+      </ul>
+    </section>
+
+    <section class="section" id="preprints-section">
+      <h2 class="section-title">预印本</h2>
+      <ul class="list" id="preprints-list">
+        <li class="loading">加载中…</li>
+      </ul>
+    </section>
+
+    <footer>
+      <p>索引与正文存于 <a href="https://github.com/xx025/shitjournal-backup">GitHub 仓库</a>，内容版权归 S.H.I.T Journal 及原作者所有。</p>
+    </footer>
+  </div>
+
+  <script>
+    const REPO = 'xx025/shitjournal-backup';
+    const BRANCH = 'main';
+
+    function slugify(s) {
+      if (!s) return 'untitled';
+      return String(s)
+        .replace(/[^\w\s-]/g, '')
+        .replace(/[-\s]+/g, '-')
+        .trim()
+        .slice(0, 80) || 'untitled';
+    }
+
+    function newsPath(slug) {
+      const first = (slug && slug[0]) || 'x';
+      const file = slugify(slug) || 'untitled';
+      return `backup/news/${first.toLowerCase()}/${file}.md`;
+    }
+
+    function preprintPath(slug) {
+      if (!slug || slug.length < 2) return `backup/preprints/xx/${slug}.md`;
+      const prefix = slug.slice(0, 2).toLowerCase();
+      return `backup/preprints/${prefix}/${slug}.md`;
+    }
+
+    function blobUrl(path) {
+      return `https://github.com/${REPO}/blob/${BRANCH}/${path}`;
+    }
+
+    function renderNews(items) {
+      const ul = document.getElementById('news-list');
+      ul.innerHTML = '';
+      if (!items.length) {
+        ul.innerHTML = '<li class="loading">暂无收录</li>';
+        return;
+      }
+      items.forEach(function (item) {
+        const path = newsPath(item.slug);
+        const li = document.createElement('li');
+        li.innerHTML = '<a href="' + blobUrl(path) + '" target="_blank" rel="noopener">' +
+          '<span class="title">' + escapeHtml(item.title || item.slug) + '</span>' +
+          (item.url ? '<span class="meta">' + escapeHtml(item.url) + '</span>' : '') +
+          '</a>';
+        ul.appendChild(li);
+      });
+    }
+
+    function renderPreprints(items) {
+      const ul = document.getElementById('preprints-list');
+      ul.innerHTML = '';
+      if (!items.length) {
+        ul.innerHTML = '<li class="loading">暂无收录</li>';
+        return;
+      }
+      items.forEach(function (item) {
+        const path = preprintPath(item.slug);
+        const li = document.createElement('li');
+        li.innerHTML = '<a href="' + blobUrl(path) + '" target="_blank" rel="noopener">' +
+          '<span class="title">' + escapeHtml(item.title || item.slug) + '</span>' +
+          (item.url ? '<span class="meta">' + escapeHtml(item.url) + '</span>' : '') +
+          '</a>';
+        ul.appendChild(li);
+      });
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function showError(sectionId, msg) {
+      const section = document.getElementById(sectionId);
+      if (section) {
+        const list = section.querySelector('.list');
+        if (list) list.innerHTML = '<li class="error">' + escapeHtml(msg) + '</li>';
+      }
+    }
+
+    fetch('https://api.github.com/repos/' + REPO + '/contents/backup/index.json?ref=' + BRANCH)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.message) throw new Error(data.message);
+        const raw = atob(data.content.replace(/\n/g, ''));
+        const index = JSON.parse(raw);
+        renderNews(index.news || []);
+        renderPreprints(index.preprints || []);
+      })
+      .catch(function (err) {
+        renderNews([]);
+        renderPreprints([]);
+        showError('news-section', '无法加载索引：' + (err.message || '请稍后重试'));
+      });
+  </script>
+</body>
+</html>
