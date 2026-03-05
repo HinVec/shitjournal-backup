@@ -36,8 +36,10 @@ def slugify(s: str) -> str:
     return s[:80] or "untitled"
 
 
-def _collect_all_preprint_urls(page, delay: float, max_pages_per_zone: int = 100) -> list[str]:
-    """从四个 zone 的列表页（含分页）收集所有预印本详情页 URL，去重后返回。使用 ?page=N 翻页避免点击超时。"""
+def _collect_all_preprint_urls(
+    page, delay: float, max_pages_per_zone: int = 100, stop_after_total: int = 0
+) -> list[str]:
+    """从四个 zone 的列表页（含分页）收集预印本详情页 URL。stop_after_total>0 时收集满即停，减少 CI 时间。"""
     seen: set[str] = set()
     js_collect = r"""
     (els) => {
@@ -51,16 +53,24 @@ def _collect_all_preprint_urls(page, delay: float, max_pages_per_zone: int = 100
     }
     """
     for zone in PREPRINT_ZONES:
+        if stop_after_total > 0 and len(seen) >= stop_after_total:
+            break
         page_num = 1
         while page_num <= max_pages_per_zone:
-            page.goto(f"{BASE_URL}/preprints?zone={zone}&page={page_num}", wait_until="networkidle")
+            page.goto(
+                f"{BASE_URL}/preprints?zone={zone}&page={page_num}",
+                wait_until="domcontentloaded",
+                timeout=15000,
+            )
             time.sleep(delay)
             links = page.eval_on_selector_all('a[href*="/preprints/"]', js_collect)
             links = list(links) if links else []
-            new_count = sum(1 for u in links if u not in seen)
+            new_in_page = sum(1 for u in links if u not in seen)
             for u in links:
                 seen.add(u)
-            if new_count == 0:
+            if stop_after_total > 0 and len(seen) >= stop_after_total:
+                break
+            if new_in_page == 0 or not links:
                 break
             page_num += 1
     return list(seen)
@@ -305,7 +315,8 @@ def run_crawl(
 
         # 2) 预印本：仅抓取未收录的，再应用 limit
         if not news_only:
-            preprint_urls = _collect_all_preprint_urls(page, delay)
+            stop_after = (preprints_limit * 2) if preprints_limit > 0 else 0
+            preprint_urls = _collect_all_preprint_urls(page, delay, stop_after_total=stop_after)
             to_fetch = [u for u in preprint_urls if u not in existing_preprints]
             if preprints_limit > 0:
                 to_fetch = to_fetch[:preprints_limit]

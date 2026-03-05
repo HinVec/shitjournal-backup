@@ -15,6 +15,7 @@ concurrency:
 jobs:
   backup:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: write
     steps:
