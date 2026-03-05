@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -250,6 +251,26 @@ def save_article(data: dict, subdir: str, organize_by_id: bool = True) -> Path |
     return md_path, subpath, safe_slug
 
 
+def _migrate_flat_news_to_grouped(out_dir: Path) -> None:
+    """将 backup/news 下扁平的 .md/.meta.json 迁移到按首字母的子目录，与前端 newsPath 一致。"""
+    news_dir = out_dir / "news"
+    if not news_dir.is_dir():
+        return
+    for f in list(news_dir.iterdir()):
+        if not f.is_file():
+            continue
+        base = f.stem.removesuffix(".meta") if f.name.endswith(".meta.json") else f.stem
+        if not base:
+            continue
+        first = base[0].lower() if base[0].isalnum() else "x"
+        subpath = news_dir / first
+        if f.parent.resolve() == news_dir.resolve():
+            subpath.mkdir(parents=True, exist_ok=True)
+            dest = subpath / f.name
+            if not dest.exists() or dest.stat().st_mtime < f.stat().st_mtime:
+                shutil.move(str(f), str(dest))
+
+
 def _capture_pdf_pages(page, subpath: Path, safe_slug: str) -> list[str]:
     """正文为 react-pdf 在 canvas 上渲染时，逐页截图保存。返回已写入的文件名列表。"""
     written: list[str] = []
@@ -488,6 +509,7 @@ def run_sync(
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     repo_root = OUTPUT_DIR.parent
 
+    _migrate_flat_news_to_grouped(OUTPUT_DIR)
     existing_news, existing_preprints, previous_index = _load_existing_index(OUTPUT_DIR)
     typer.echo(f"已收录：新闻 {len(existing_news)} 篇，预印本 {len(existing_preprints)} 篇。")
 
